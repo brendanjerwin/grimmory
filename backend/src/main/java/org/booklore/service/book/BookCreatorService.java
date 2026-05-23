@@ -72,10 +72,14 @@ public class BookCreatorService {
             String newHash = libraryFile.isFolderBased()
                     ? FileFingerprint.generateFolderHash(libraryFile.getFullPath())
                     : FileFingerprint.generateHash(libraryFile.getFullPath());
+            String newKoreaderHash = libraryFile.isFolderBased()
+                    ? null
+                    : FileFingerprint.generateFullFileMd5(libraryFile.getFullPath());
             BookEntity existingBook = existing.get();
             BookFileEntity primaryFile = existingBook.getPrimaryBookFile();
             primaryFile.setCurrentHash(newHash);
             primaryFile.setInitialHash(newHash);
+            primaryFile.setKoreaderHash(newKoreaderHash);
             primaryFile.setFileSizeKb(fileSizeKb);
             primaryFile.setFolderBased(libraryFile.isFolderBased());
             existingBook.setDeleted(false);
@@ -86,6 +90,9 @@ public class BookCreatorService {
         String hash = libraryFile.isFolderBased()
                 ? FileFingerprint.generateFolderHash(libraryFile.getFullPath())
                 : FileFingerprint.generateHash(libraryFile.getFullPath());
+        String koreaderHash = libraryFile.isFolderBased()
+                ? null
+                : FileFingerprint.generateFullFileMd5(libraryFile.getFullPath());
 
         BookEntity bookEntity = BookEntity.builder()
                 .library(libraryFile.getLibraryEntity())
@@ -104,6 +111,7 @@ public class BookCreatorService {
                 .fileSizeKb(fileSizeKb)
                 .initialHash(hash)
                 .currentHash(hash)
+                .koreaderHash(koreaderHash)
                 .addedOn(Instant.now())
                 .build();
         bookEntity.getBookFiles().add(bookFileEntity);

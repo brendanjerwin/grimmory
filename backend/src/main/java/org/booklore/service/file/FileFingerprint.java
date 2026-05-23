@@ -1,9 +1,12 @@
 package org.booklore.service.file;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.booklore.util.FileUtils;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -42,6 +45,16 @@ public class FileFingerprint {
 
         } catch (IOException | NoSuchAlgorithmException e) {
             throw new RuntimeException("Failed to compute partial MD5 hash for input file", e);
+        }
+    }
+
+    public static String generateFullFileMd5(Path filePath) {
+        Path normalizedFilePath = validateReadableFilePath(filePath);
+
+        try (InputStream inputStream = Files.newInputStream(normalizedFilePath)) {
+            return DigestUtils.md5Hex(inputStream);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to compute full-file MD5 hash for " + normalizedFilePath, e);
         }
     }
 

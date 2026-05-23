@@ -111,6 +111,7 @@ public class FileUploadService {
             file.transferTo(tempPath);
 
             final String fileHash = FileFingerprint.generateHash(tempPath);
+            final String koreaderHash = FileFingerprint.generateFullFileMd5(tempPath);
             if (isBook) {
                 validateAlternativeFormatDuplicate(fileHash);
             }
@@ -170,7 +171,7 @@ public class FileUploadService {
 
             log.info("Additional file uploaded to final location: {}", finalPath);
 
-            final BookFileEntity entity = createAdditionalFileEntityWithSubPath(book, finalFileName, fileSubPath, isBook, effectiveBookType, file.getSize(), fileHash, description);
+            final BookFileEntity entity = createAdditionalFileEntityWithSubPath(book, finalFileName, fileSubPath, isBook, effectiveBookType, file.getSize(), fileHash, koreaderHash, description);
             final BookFileEntity savedEntity = additionalFileRepository.save(entity);
 
             return additionalFileMapper.toAdditionalFile(savedEntity);
@@ -204,7 +205,7 @@ public class FileUploadService {
         return book.getLibrary().getLibraryPaths().getFirst();
     }
 
-    private BookFileEntity createAdditionalFileEntityWithSubPath(BookEntity book, String fileName, String fileSubPath, boolean isBook, BookFileType bookType, long fileSize, String fileHash, String description) {
+    private BookFileEntity createAdditionalFileEntityWithSubPath(BookEntity book, String fileName, String fileSubPath, boolean isBook, BookFileType bookType, long fileSize, String fileHash, String koreaderHash, String description) {
         return BookFileEntity.builder()
                 .book(book)
                 .fileName(fileName)
@@ -214,6 +215,7 @@ public class FileUploadService {
                 .fileSizeKb(fileSize / BYTES_TO_KB_DIVISOR)
                 .initialHash(fileHash)
                 .currentHash(fileHash)
+                .koreaderHash(isBook ? koreaderHash : null)
                 .description(description)
                 .addedOn(Instant.now())
                 .build();

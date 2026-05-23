@@ -34,4 +34,21 @@ public class AppMigrationService {
             throw e;
         }
     }
+
+    public void executeRetryableMigration(Migration migration) {
+        if (migrationRepository.existsById(migration.getKey())) {
+            log.debug("Migration '{}' already executed, skipping", migration.getKey());
+            return;
+        }
+        try {
+            migration.execute();
+            AppMigrationEntity entity = new AppMigrationEntity(migration.getKey(), LocalDateTime.now(), migration.getDescription());
+            migrationRepository.save(entity);
+
+            log.info("Migration '{}' completed successfully", migration.getKey());
+        } catch (Exception e) {
+            log.warn("Migration '{}' did not complete and will be retried later: {}", migration.getKey(), e.getMessage());
+            throw e;
+        }
+    }
 }

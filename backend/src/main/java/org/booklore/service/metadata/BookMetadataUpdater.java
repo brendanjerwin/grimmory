@@ -141,6 +141,7 @@ public class BookMetadataUpdater {
                             : FileFingerprint.generateHash(bookEntity.getFullFilePath());
                     bookEntity.setMetadataForWriteUpdatedAt(Instant.now());
                     primaryFile.setCurrentHash(newHash);
+                    primaryFile.setKoreaderHash(file.isDirectory() ? null : FileFingerprint.generateFullFileMd5(bookEntity.getFullFilePath()));
                     bookRepository.save(bookEntity);
                 } catch (Exception e) {
                     log.warn("Failed to write metadata for book ID {}: {}", bookId, e.getMessage());

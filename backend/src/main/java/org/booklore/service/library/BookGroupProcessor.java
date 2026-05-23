@@ -115,12 +115,15 @@ public class BookGroupProcessor {
         }
 
         String hash;
+        String koreaderHash;
         Long fileSizeKb;
         if (file.isFolderBased()) {
             hash = FileFingerprint.generateFolderHash(file.getFullPath());
+            koreaderHash = null;
             fileSizeKb = FileUtils.getFolderSizeInKb(file.getFullPath());
         } else {
             hash = FileFingerprint.generateHash(file.getFullPath());
+            koreaderHash = FileFingerprint.generateFullFileMd5(file.getFullPath());
             fileSizeKb = FileUtils.getFileSizeInKb(file.getFullPath());
         }
 
@@ -134,6 +137,7 @@ public class BookGroupProcessor {
                 .fileSizeKb(fileSizeKb)
                 .initialHash(hash)
                 .currentHash(hash)
+                .koreaderHash(koreaderHash)
                 .addedOn(Instant.now())
                 .build();
 

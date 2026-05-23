@@ -66,6 +66,7 @@ class BookFileTransactionalHandlerTest {
         groupingMock = mockStatic(BookFileGroupingUtils.class);
 
         fingerprintMock.when(() -> FileFingerprint.generateHash(any(Path.class))).thenReturn("hash123");
+        fingerprintMock.when(() -> FileFingerprint.generateFullFileMd5(any(Path.class))).thenReturn("koreader-md5");
         fingerprintMock.when(() -> FileFingerprint.generateFolderHash(any(Path.class))).thenReturn("folderhash");
         fileUtilsMock.when(() -> FileUtils.getRelativeSubPath(anyString(), any(Path.class))).thenReturn("sub");
         fileUtilsMock.when(() -> FileUtils.getFileSizeInKb(any(Path.class))).thenReturn(100L);
@@ -168,6 +169,7 @@ class BookFileTransactionalHandlerTest {
         void existingAtPath_sameHash_skipsProcessing() {
             BookEntity book = buildBook(10L, false);
             BookFileEntity bookFile = buildBookFile(100L, book, "test.epub", "hash123");
+            bookFile.setKoreaderHash("koreader-md5");
             book.setBookFiles(List.of(bookFile));
 
             when(bookFilePersistenceService.findBookFileByLibraryPathSubPathAndFileName(1L, "sub", "test.epub"))
@@ -177,6 +179,24 @@ class BookFileTransactionalHandlerTest {
 
             verify(bookFilePersistenceService, never()).save(any());
             verify(pendingDeletionPool).cancelByPath(any());
+        }
+
+        @Test
+        void existingAtPath_sameHash_refreshesStaleKoreaderHash() {
+            BookEntity book = buildBook(10L, false);
+            BookFileEntity bookFile = buildBookFile(100L, book, "test.epub", "hash123");
+            bookFile.setKoreaderHash("stale-md5");
+            book.setBookFiles(List.of(bookFile));
+
+            when(bookFilePersistenceService.findBookFileByLibraryPathSubPathAndFileName(1L, "sub", "test.epub"))
+                    .thenReturn(Optional.of(bookFile));
+
+            handler.handleNewBookFile(1L, Path.of("/library/sub/test.epub"));
+
+            verify(pendingDeletionPool).cancelByPath(any());
+            verify(bookFilePersistenceService).save(book);
+            assertThat(bookFile.getCurrentHash()).isEqualTo("hash123");
+            assertThat(bookFile.getKoreaderHash()).isEqualTo("koreader-md5");
         }
 
         @Test
@@ -193,6 +213,7 @@ class BookFileTransactionalHandlerTest {
             verify(pendingDeletionPool).cancelByPath(any());
             verify(bookFilePersistenceService).save(book);
             assertThat(bookFile.getCurrentHash()).isEqualTo("hash123");
+            assertThat(bookFile.getKoreaderHash()).isEqualTo("koreader-md5");
         }
 
         @Test
@@ -207,7 +228,7 @@ class BookFileTransactionalHandlerTest {
 
             handler.handleNewBookFile(1L, Path.of("/library/sub/test.epub"));
 
-            verify(pendingDeletionPool).recoverBook(eq(match), eq(libraryPath), eq("sub"), eq("test.epub"), eq("hash123"));
+            verify(pendingDeletionPool).recoverBook(eq(match), eq(libraryPath), eq("sub"), eq("test.epub"), eq("hash123"), eq("koreader-md5"));
             verify(libraryProcessingService, never()).processLibraryFiles(any(), any());
         }
 

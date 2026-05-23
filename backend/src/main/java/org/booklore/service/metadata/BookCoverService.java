@@ -599,6 +599,7 @@ public class BookCoverService {
                         writerAction.accept(writer, bookEntity);
                         String newHash = FileFingerprint.generateHash(bookEntity.getFullFilePath());
                         primaryFile.setCurrentHash(newHash);
+                        primaryFile.setKoreaderHash(FileFingerprint.generateFullFileMd5(bookEntity.getFullFilePath()));
                     });
         }
     }
@@ -622,6 +623,7 @@ public class BookCoverService {
                     if (!audiobookFile.isFolderBased()) {
                         String newHash = FileFingerprint.generateHash(audiobookFile.getFullFilePath());
                         audiobookFile.setCurrentHash(newHash);
+                        audiobookFile.setKoreaderHash(FileFingerprint.generateFullFileMd5(audiobookFile.getFullFilePath()));
                     }
                 });
     }

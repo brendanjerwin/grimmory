@@ -18,7 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @AllArgsConstructor
@@ -28,6 +32,7 @@ public class KoreaderService {
     private final UserBookProgressRepository progressRepository;
     private final UserBookFileProgressRepository fileProgressRepository;
     private final BookRepository bookRepository;
+    private final BookFileRepository bookFileRepository;
     private final UserRepository userRepository;
     private final KoreaderUserRepository koreaderUserRepository;
     private final HardcoverSyncService hardcoverSyncService;
@@ -44,12 +49,13 @@ public class KoreaderService {
 
     public KoreaderProgress getProgress(String bookHash) {
         KoreaderUserDetails authDetails = getAuthDetailsWithSyncCheck();
-        BookEntity book = findBookByHash(bookHash);
+        BookFileMatch match = findKoreaderBookFileMatch(bookHash, authDetails.getBookLoreUserId());
+        BookEntity book = match.book();
         UserBookProgressEntity progress = findUserProgress(authDetails.getBookLoreUserId(), book.getId());
 
-        log.info("getProgress: fetched progress='{}' percentage={} for userId={} bookHash={}",
+        log.info("getProgress: fetched progress='{}' percentage={} for userId={} bookId={} bookFileId={}",
                 progress.getKoreaderProgress(), progress.getKoreaderProgressPercent(),
-                authDetails.getBookLoreUserId(), bookHash);
+                authDetails.getBookLoreUserId(), book.getId(), match.bookFile() != null ? match.bookFile().getId() : null);
 
         Long timestamp = progress.getKoreaderLastSyncTime() != null
                 ? progress.getKoreaderLastSyncTime().getEpochSecond()
@@ -68,20 +74,23 @@ public class KoreaderService {
     @Transactional
     public void saveProgress(String bookHash, KoreaderProgress koProgress) {
         KoreaderUserDetails authDetails = getAuthDetailsWithSyncCheck();
-        BookEntity book = findBookByHash(bookHash);
+        BookFileMatch match = findKoreaderBookFileMatch(bookHash, authDetails.getBookLoreUserId());
+        BookEntity book = match.book();
         BookLoreUserEntity user = findBookLoreUser(authDetails.getBookLoreUserId());
 
         UserBookProgressEntity userProgress = getOrCreateUserProgress(user, book);
         Float previousProgressPercent = userProgress.getKoreaderProgressPercent();
         ReadStatus previousReadStatus = userProgress.getReadStatus();
-        updateProgressData(userProgress, koProgress, authDetails.isSyncWithWebReader(), book);
+        updateProgressData(userProgress, koProgress, authDetails.isSyncWithWebReader(), book, match.bookFile());
 
         progressRepository.save(userProgress);
 
         // Also save to file-level progress table (dual-write)
-        saveToFileProgress(user, book, userProgress);
+        saveToFileProgress(user, book, match.bookFile(), userProgress);
 
-        log.info("saveProgress: saved progress='{}' percentage={} for userId={} bookHash={}", koProgress.getProgress(), koProgress.getPercentage(), authDetails.getBookLoreUserId(), bookHash);
+        log.info("saveProgress: saved progress='{}' percentage={} for userId={} bookId={} bookFileId={}",
+                koProgress.getProgress(), koProgress.getPercentage(), authDetails.getBookLoreUserId(),
+                book.getId(), match.bookFile() != null ? match.bookFile().getId() : null);
 
         // Sync progress to Hardcover asynchronously (if enabled for this user)
         // But only if the progress percentage has changed from last time, or the read status has changed
@@ -92,9 +101,9 @@ public class KoreaderService {
         }
     }
 
-    private void saveToFileProgress(BookLoreUserEntity user, BookEntity book, UserBookProgressEntity progress) {
+    private void saveToFileProgress(BookLoreUserEntity user, BookEntity book, BookFileEntity matchedBookFile, UserBookProgressEntity progress) {
         try {
-            BookFileEntity primaryFile = book.getPrimaryBookFile();
+            BookFileEntity primaryFile = matchedBookFile != null ? matchedBookFile : book.getPrimaryBookFile();
             UserBookFileProgressEntity fileProgress = fileProgressRepository
                     .findByUserIdAndBookFileId(user.getId(), primaryFile.getId())
                     .orElseGet(UserBookFileProgressEntity::new);
@@ -128,7 +137,7 @@ public class KoreaderService {
         }
     }
 
-    private void updateProgressData(UserBookProgressEntity userProgress, KoreaderProgress koProgress, boolean syncWithWebReader, BookEntity book) {
+    private void updateProgressData(UserBookProgressEntity userProgress, KoreaderProgress koProgress, boolean syncWithWebReader, BookEntity book, BookFileEntity matchedBookFile) {
         userProgress.setKoreaderProgress(koProgress.getProgress());
         userProgress.setKoreaderProgressPercent(koProgress.getPercentage());
         userProgress.setKoreaderDevice(koProgress.getDevice());
@@ -137,7 +146,8 @@ public class KoreaderService {
         userProgress.setLastReadTime(Instant.now());
         if (syncWithWebReader && koProgress.getProgress() != null) {
             try {
-                String cfi = epubCfiService.convertXPointerToCfi(book.getFullFilePath(), koProgress.getProgress());
+                BookFileEntity bookFile = matchedBookFile != null ? matchedBookFile : book.getPrimaryBookFile();
+                String cfi = epubCfiService.convertXPointerToCfi(bookFile.getFullFilePath(), koProgress.getProgress());
 
                 float percent = koProgress.getPercentage() * 100f;
                 float rounded = BigDecimal
@@ -213,9 +223,71 @@ public class KoreaderService {
         }
     }
 
-    private BookEntity findBookByHash(String bookHash) {
-        return bookRepository.findByCurrentHash(bookHash)
-                .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash));
+    private BookFileMatch findKoreaderBookFileMatch(String documentHash, long userId) {
+        Optional<BookFileMatch> koreaderHashMatch = findBookFileByKoreaderDocumentHash(documentHash, userId);
+        if (koreaderHashMatch.isPresent()) {
+            return koreaderHashMatch.get();
+        }
+
+        Optional<BookEntity> currentHashMatch = bookRepository.findByCurrentHash(documentHash);
+        if (currentHashMatch.isPresent()) {
+            BookEntity book = currentHashMatch.get();
+            log.debug("Resolved KOReader document by currentHash for bookId={}", book.getId());
+            return new BookFileMatch(book, book.getPrimaryBookFile());
+        }
+
+        throw ApiError.GENERIC_NOT_FOUND.createException("Book not found for supplied KOReader document");
+    }
+
+    private Optional<BookFileMatch> findBookFileByKoreaderDocumentHash(String documentHash, long userId) {
+        if (documentHash == null || !documentHash.matches("(?i)[a-f0-9]{32}")) {
+            return Optional.empty();
+        }
+
+        List<BookFileEntity> matches = bookFileRepository.findAllByKoreaderHash(documentHash.toLowerCase());
+        if (matches.isEmpty()) {
+            return Optional.empty();
+        }
+        if (matches.size() == 1) {
+            BookFileEntity bookFile = matches.getFirst();
+            log.debug("Resolved KOReader document by koreaderHash for bookFileId={} bookId={}",
+                    bookFile.getId(), bookFile.getBook().getId());
+            return Optional.of(new BookFileMatch(bookFile.getBook(), bookFile));
+        }
+
+        Set<Long> candidateFileIds = matches.stream()
+                .map(BookFileEntity::getId)
+                .collect(Collectors.toSet());
+        List<UserBookFileProgressEntity> fileProgressMatches = fileProgressRepository.findByUserIdAndBookFileIdIn(userId, candidateFileIds);
+        if (fileProgressMatches.size() == 1) {
+            BookFileEntity bookFile = fileProgressMatches.getFirst().getBookFile();
+            log.debug("Resolved ambiguous KOReader hash by existing file progress for bookFileId={} bookId={}",
+                    bookFile.getId(), bookFile.getBook().getId());
+            return Optional.of(new BookFileMatch(bookFile.getBook(), bookFile));
+        }
+
+        Set<Long> candidateIds = matches.stream()
+                .map(bookFile -> bookFile.getBook().getId())
+                .collect(Collectors.toSet());
+        Set<Long> progressBookIds = progressRepository.findExistingProgressBookIds(userId, candidateIds);
+        if (progressBookIds.size() == 1) {
+            Long preferredBookId = progressBookIds.iterator().next();
+            List<BookFileEntity> matchingFilesForBook = matches.stream()
+                    .filter(bookFile -> bookFile.getBook().getId().equals(preferredBookId))
+                    .toList();
+            if (matchingFilesForBook.size() == 1) {
+                BookFileEntity bookFile = matchingFilesForBook.getFirst();
+                log.debug("Resolved ambiguous KOReader hash by existing book progress for bookFileId={} bookId={}",
+                        bookFile.getId(), bookFile.getBook().getId());
+                return Optional.of(new BookFileMatch(bookFile.getBook(), bookFile));
+            }
+        }
+
+        log.warn("Ambiguous KOReader hash matched bookFile IDs {} and book IDs {} for user {}", candidateFileIds, candidateIds, userId);
+        throw ApiError.CONFLICT.createException("KOReader hash matches multiple books");
+    }
+
+    private record BookFileMatch(BookEntity book, BookFileEntity bookFile) {
     }
 
     private BookLoreUserEntity findBookLoreUser(long userId) {

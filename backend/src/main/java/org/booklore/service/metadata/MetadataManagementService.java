@@ -73,6 +73,7 @@ public class MetadataManagementService {
                         writerOpt.get().saveMetadataToFile(file, metadata, null, null);
                         String newHash = FileFingerprint.generateHash(book.getFullFilePath());
                         primaryFile.setCurrentHash(newHash);
+                        primaryFile.setKoreaderHash(FileFingerprint.generateFullFileMd5(book.getFullFilePath()));
                         bookModified = true;
                     }
                 }

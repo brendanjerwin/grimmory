@@ -1,6 +1,8 @@
 package org.booklore.repository;
 
 import org.booklore.model.entity.BookFileEntity;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,7 +17,7 @@ import java.util.Optional;
 public interface BookFileRepository extends JpaRepository<BookFileEntity, Long> {
 
     @Query("""
-            SELECT bf FROM BookFileEntity bf
+            SELECT DISTINCT bf FROM BookFileEntity bf
             WHERE bf.book.libraryPath.id = :libraryPathId
             AND bf.fileSubPath = :fileSubPath
             AND bf.fileName = :fileName
@@ -24,6 +26,29 @@ public interface BookFileRepository extends JpaRepository<BookFileEntity, Long> 
             @Param("libraryPathId") Long libraryPathId,
             @Param("fileSubPath") String fileSubPath,
             @Param("fileName") String fileName);
+
+    @EntityGraph(attributePaths = {"book", "book.bookFiles", "book.library", "book.libraryPath"})
+    @Query("""
+            SELECT DISTINCT bf FROM BookFileEntity bf
+            WHERE bf.koreaderHash = :koreaderHash
+            AND bf.isBookFormat = true
+            AND (bf.book.deleted IS NULL OR bf.book.deleted = false)
+            ORDER BY bf.id ASC
+            """)
+    List<BookFileEntity> findAllByKoreaderHash(@Param("koreaderHash") String koreaderHash);
+
+    @Query("""
+            SELECT bf FROM BookFileEntity bf
+            JOIN FETCH bf.book b
+            LEFT JOIN FETCH b.libraryPath
+            WHERE bf.isBookFormat = true
+            AND bf.folderBased = false
+            AND bf.koreaderHash IS NULL
+            AND bf.id > :afterId
+            AND (b.deleted IS NULL OR b.deleted = false)
+            ORDER BY bf.id ASC
+            """)
+    List<BookFileEntity> findActiveBookFilesMissingKoreaderHashAfterId(@Param("afterId") Long afterId, Pageable pageable);
 
     @Query("SELECT COUNT(bf) FROM BookFileEntity bf WHERE bf.book.id = :bookId")
     long countByBookId(@Param("bookId") Long bookId);

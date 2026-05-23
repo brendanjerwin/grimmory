@@ -64,6 +64,9 @@ public class BookFileEntity {
     @Column(name = "current_hash", length = 128)
     private String currentHash;
 
+    @Column(name = "koreader_hash", length = 32)
+    private String koreaderHash;
+
     @Column(name = "alt_format_current_hash", insertable = false, updatable = false)
     private String altFormatCurrentHash;
 

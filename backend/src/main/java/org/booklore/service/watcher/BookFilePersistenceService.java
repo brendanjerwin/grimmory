@@ -11,6 +11,7 @@ import org.booklore.model.websocket.Topic;
 import org.booklore.repository.BookFileRepository;
 import org.booklore.repository.BookRepository;
 import org.booklore.service.NotificationService;
+import org.booklore.service.file.FileFingerprint;
 import org.booklore.util.FileUtils;
 import jakarta.persistence.EntityManager;
 import lombok.AllArgsConstructor;
@@ -60,6 +61,7 @@ public class BookFilePersistenceService {
             book.setLibraryPath(newLibraryPath);
             matchedFile.setFileSubPath(newSubPath);
             matchedFile.setFileName(newFileName);
+            matchedFile.setKoreaderHash(FileFingerprint.generateFullFileMd5(path));
             book.setDeleted(Boolean.FALSE);
             book.setDeletedAt(null);
             bookRepository.save(book);
@@ -152,6 +154,7 @@ public class BookFilePersistenceService {
                         bf.setFileSubPath(newSubPath);
                         bf.setFileName(filePath.getFileName().toString());
                         bf.setCurrentHash(entry.getValue());
+                        bf.setKoreaderHash(FileFingerprint.generateFullFileMd5(filePath));
                         break;
                     }
                 }

@@ -2,10 +2,12 @@ package org.booklore.service.migration;
 
 import org.booklore.service.migration.migrations.*;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 @AllArgsConstructor
 public class AppMigrationStartup {
@@ -21,6 +23,7 @@ public class AppMigrationStartup {
     private final MoveIconsToDataFolderMigration moveIconsToDataFolderMigration;
     private final GenerateCoverHashMigration generateCoverHashMigration;
     private final MigrateProgressToFileProgressMigration migrateProgressToFileProgressMigration;
+    private final PopulateKoreaderHashesMigration populateKoreaderHashesMigration;
 
     @EventListener(ApplicationReadyEvent.class)
     public void runMigrationsOnce() {
@@ -34,5 +37,13 @@ public class AppMigrationStartup {
         appMigrationService.executeMigration(moveIconsToDataFolderMigration);
         appMigrationService.executeMigration(generateCoverHashMigration);
         appMigrationService.executeMigration(migrateProgressToFileProgressMigration);
+
+        Thread.ofVirtual().name("populate-koreader-hashes").start(() -> {
+            try {
+                appMigrationService.executeRetryableMigration(populateKoreaderHashesMigration);
+            } catch (Exception e) {
+                log.debug("KOReader hash backfill did not complete; it will retry on next startup: {}", e.getMessage());
+            }
+        });
     }
 }

@@ -171,6 +171,9 @@ public class LibraryProcessingService {
         String hash = file.isFolderBased()
                 ? FileFingerprint.generateFolderHash(file.getFullPath())
                 : FileFingerprint.generateHash(file.getFullPath());
+        String koreaderHash = file.isFolderBased()
+                ? null
+                : FileFingerprint.generateFullFileMd5(file.getFullPath());
         Long fileSizeKb = file.isFolderBased()
                 ? FileUtils.getFolderSizeInKb(file.getFullPath())
                 : FileUtils.getFileSizeInKb(file.getFullPath());
@@ -184,6 +187,7 @@ public class LibraryProcessingService {
                 .fileSizeKb(fileSizeKb)
                 .initialHash(hash)
                 .currentHash(hash)
+                .koreaderHash(koreaderHash)
                 .addedOn(Instant.now())
                 .build();
 

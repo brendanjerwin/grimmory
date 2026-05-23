@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -77,6 +78,7 @@ public class BookFileTransactionalHandler {
                 existingBook.setDeleted(false);
                 existingBook.setDeletedAt(null);
                 existing.setCurrentHash(currentHash);
+                existing.setKoreaderHash(FileFingerprint.generateFullFileMd5(path));
                 bookFilePersistenceService.save(existingBook);
                 log.info("[CREATE] File '{}' restored deleted book id={}", filePath, existingBook.getId());
                 notificationService.sendMessageToPermissions(Topic.LOG, LogNotification.info("Finished processing file: " + filePath), Set.of(ADMIN, MANAGE_LIBRARY));
@@ -86,11 +88,20 @@ public class BookFileTransactionalHandler {
             pendingDeletionPool.cancelByPath(path);
 
             if (currentHash.equals(existingHash)) {
+                String koreaderHash = FileFingerprint.generateFullFileMd5(path);
+                if (!Objects.equals(existing.getKoreaderHash(), koreaderHash)) {
+                    existing.setKoreaderHash(koreaderHash);
+                    bookFilePersistenceService.save(existingBook);
+                    log.info("[CREATE] File '{}' unchanged, refreshed KOReader hash", filePath);
+                    notificationService.sendMessageToPermissions(Topic.LOG, LogNotification.info("Finished processing file: " + filePath), Set.of(ADMIN, MANAGE_LIBRARY));
+                    return;
+                }
                 log.debug("[CREATE] File '{}' unchanged (same hash), skipping", filePath);
                 notificationService.sendMessageToPermissions(Topic.LOG, LogNotification.info("Finished processing file: " + filePath), Set.of(ADMIN, MANAGE_LIBRARY));
                 return;
             }
             existing.setCurrentHash(currentHash);
+            existing.setKoreaderHash(FileFingerprint.generateFullFileMd5(path));
             bookFilePersistenceService.save(existingBook);
             log.info("[CREATE] File '{}' content changed, updated hash", filePath);
             notificationService.sendMessageToPermissions(Topic.LOG, LogNotification.info("Finished processing file: " + filePath), Set.of(ADMIN, MANAGE_LIBRARY));
@@ -102,7 +113,7 @@ public class BookFileTransactionalHandler {
         Optional<PendingDeletionPool.MatchResult> poolMatch = pendingDeletionPool.matchByHash(currentHash);
         if (poolMatch.isPresent()) {
             var match = poolMatch.get();
-            pendingDeletionPool.recoverBook(match, libraryPathEntity, fileSubPath, fileName, currentHash);
+            pendingDeletionPool.recoverBook(match, libraryPathEntity, fileSubPath, fileName, currentHash, FileFingerprint.generateFullFileMd5(path));
             log.info("[CREATE] File '{}' matched pending deletion, recovered book id={}", filePath, match.book().bookId());
             notificationService.sendMessageToPermissions(Topic.LOG, LogNotification.info("Finished processing file: " + filePath), Set.of(ADMIN, MANAGE_LIBRARY));
             return;
@@ -424,6 +435,7 @@ public class BookFileTransactionalHandler {
 
     private void autoAttachFile(BookEntity book, String fileName, String fileSubPath, Path fullPath) {
         String hash = FileFingerprint.generateHash(fullPath);
+        String koreaderHash = FileFingerprint.generateFullFileMd5(fullPath);
         BookFileEntity additionalFile = BookFileEntity.builder()
                 .book(book)
                 .fileName(fileName)
@@ -435,6 +447,7 @@ public class BookFileTransactionalHandler {
                 .fileSizeKb(FileUtils.getFileSizeInKb(fullPath))
                 .initialHash(hash)
                 .currentHash(hash)
+                .koreaderHash(koreaderHash)
                 .addedOn(Instant.now())
                 .build();
 

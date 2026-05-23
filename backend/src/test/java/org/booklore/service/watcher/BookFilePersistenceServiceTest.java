@@ -6,6 +6,7 @@ import org.booklore.model.enums.BookFileType;
 import org.booklore.repository.BookFileRepository;
 import org.booklore.repository.BookRepository;
 import org.booklore.service.NotificationService;
+import org.booklore.service.file.FileFingerprint;
 import org.booklore.util.FileUtils;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
@@ -39,6 +40,7 @@ class BookFilePersistenceServiceTest {
 
     private AutoCloseable mocks;
     private MockedStatic<FileUtils> fileUtilsMock;
+    private MockedStatic<FileFingerprint> fingerprintMock;
 
     private LibraryEntity library;
     private LibraryPathEntity libraryPath;
@@ -49,7 +51,9 @@ class BookFilePersistenceServiceTest {
         service = new BookFilePersistenceService(entityManager, bookRepository, bookFileRepository, notificationService, bookMapper);
 
         fileUtilsMock = mockStatic(FileUtils.class);
+        fingerprintMock = mockStatic(FileFingerprint.class);
         fileUtilsMock.when(() -> FileUtils.getRelativeSubPath(anyString(), any(Path.class))).thenReturn("sub");
+        fingerprintMock.when(() -> FileFingerprint.generateFullFileMd5(any(Path.class))).thenReturn("koreader-md5");
 
         libraryPath = new LibraryPathEntity();
         libraryPath.setId(1L);
@@ -64,6 +68,7 @@ class BookFilePersistenceServiceTest {
 
     @AfterEach
     void tearDown() throws Exception {
+        fingerprintMock.close();
         fileUtilsMock.close();
         mocks.close();
     }

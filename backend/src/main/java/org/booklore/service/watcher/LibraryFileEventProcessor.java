@@ -376,7 +376,7 @@ public class LibraryFileEventProcessor implements SmartLifecycle {
                     String libPath = bookFilePersistenceService.findMatchingLibraryPath(library, p);
                     LibraryPathEntity lpEntity = bookFilePersistenceService.getLibraryPathEntityForFile(library, libPath);
                     String subPath = FileUtils.getRelativeSubPath(lpEntity.getPath(), p);
-                    pendingDeletionPool.recoverBook(pmatch, lpEntity, subPath, p.getFileName().toString(), hash);
+                    pendingDeletionPool.recoverBook(pmatch, lpEntity, subPath, p.getFileName().toString(), hash, FileFingerprint.generateFullFileMd5(p));
                     log.info("[FOLDER_CREATE] File '{}' matched pending deletion, recovered book id={}", p, pmatch.book().bookId());
                     continue;
                 }

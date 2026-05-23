@@ -243,6 +243,11 @@ public class PendingDeletionPool {
 
     @Transactional
     public void recoverBook(MatchResult match, LibraryPathEntity newLibraryPath, String newFileSubPath, String newFileName, String hash) {
+        recoverBook(match, newLibraryPath, newFileSubPath, newFileName, hash, null);
+    }
+
+    @Transactional
+    public void recoverBook(MatchResult match, LibraryPathEntity newLibraryPath, String newFileSubPath, String newFileName, String hash, String koreaderHash) {
         BookEntity book = bookRepository.findById(match.book().bookId())
                 .orElseThrow(() -> new IllegalStateException("Book not found: " + match.book().bookId()));
 
@@ -255,6 +260,7 @@ public class PendingDeletionPool {
         bookFile.setFileSubPath(newFileSubPath);
         bookFile.setFileName(newFileName);
         bookFile.setCurrentHash(hash);
+        bookFile.setKoreaderHash(koreaderHash);
         bookRepository.save(book);
 
         notificationService.sendMessageToPermissions(Topic.BOOK_ADD,
